@@ -1,21 +1,13 @@
 # -*- coding: utf-8 -*-
 
-import struct, zlib
+import struct
 from errors import *
 
 class MemCacheBinaryProtocol:
 
     HEADER = '!BBHBBHLLQ'
     HEADER_SIZE = 24
-    FLAGS_COMPRESSED = 1
 
-    def __init__(self, compress, compression_threshold):
-        '''
-        Inititalize a MemCache binary protocol helper instance
-        '''
-        self.compress = compress
-        self.compression_threshold = compression_threshold
-        
     def get_command(self, key):
         '''
         Build the binary structure that represents a GET command
@@ -62,22 +54,16 @@ class MemCacheBinaryProtocol:
 
     def parse_response(self, bodylen, content):
         '''
-        Parse a response
+        Parse a response.
+        For the binary protocol, there's nothing more we need to do here!
         '''
         flags, value = struct.unpack('!L%ds' % (bodylen-4,), content)
-        if flags & MemCacheBinaryProtocol.FLAGS_COMPRESSED:
-            value = zlib.decompress(value)
-            
-        return value
-
-    def prepare_value(self, value):
-        '''
-        Prepare a value to be written to MemCache
-        '''
-        flags = 0
-        if self.compress and (len(value) > self.compression_threshold):
-            value = zlib.compress(value)
-            flags |= MemCacheBinaryProtocol.FLAGS_COMPRESSED
-            
         return flags, value
+
+    def prepare_value(self, value, flags):
+        '''
+        Prepare a value to be written to MemCache.
+        Default implementation for the Binary protocol does nothing!
+        '''
+        return value
 

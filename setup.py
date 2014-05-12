@@ -5,7 +5,7 @@ from distutils.core import setup
 
 setup(
     name='tornadobmc',
-    version='0.0.1',
+    version='0.0.2',
     description=('Asynchronous MemCache client using Binary protocol for Tornado (Python)'),
     author='Roi Avidan',
     author_email='roi.avidan@corp.terra.com.br',

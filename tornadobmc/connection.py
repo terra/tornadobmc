@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import socket, errno
+import socket, errno, zlib, time
 from datetime import timedelta
 from urllib import splitport
 from tornado.iostream import IOStream
@@ -11,15 +11,19 @@ from errors import *
 
 class Connection:
 
-    def __init__(self, address, timeout, compress, compression_threshold):
+    FLAGS_COMPRESSED = 1
+
+    def __init__(self, address, timeout, compress, compression_threshold, server_ttl):
         '''
         Initialize a new MemCache connection
         '''
         self.timeout = timeout
         self.compress = compress
+        self.server_ttl = server_ttl
         self.compression_threshold = compression_threshold
         self.connection = None
-        self.protocol = MemCacheBinaryProtocol(self.compress, self.compression_threshold)
+        self.connection_time = None
+        self.protocol = MemCacheBinaryProtocol()
 
         # Parse and save the remote address as a tuple
         host, port = splitport(address)
@@ -34,17 +38,24 @@ class Connection:
                 # Initialize socket and connect to remote MemCache server
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.connect(self.address)
-                
+
                 # Wrap socket in Tornado's async IO Stream
                 self.connection = IOStream(sock)
+                self.connection_time = time.time()
             except Exception as e:
                 self.connection = None
+                self.connection_time = None
                 if should_raise:
                     if e.errno == errno.ETIMEDOUT:
                         raise MemCacheTimeoutException(str(self.address), e.strerror)
                     else:
                         raise MemCacheConnectionErrorException(str(self.address), e)
                 return False
+        elif time.time() - self.connection_time > self.server_ttl:
+                # Close current connection
+                self.disconnect()
+                # Establish a new one
+                return self.connect(should_raise)
             
         return True
 
@@ -52,9 +63,12 @@ class Connection:
         '''
         Close the current connection
         '''
-        if self.connection is not None:
-            self.connection.close()
+        try:
+            if self.connection is not None:
+                self.connection.close()
+        finally:
             self.connection = None
+            self.connection_time = None
 
     @coroutine
     def get(self, key):
@@ -75,7 +89,11 @@ class Connection:
         Set a value into MemCache
         '''
         # Prepare value to SET
-        flags, value = self.protocol.prepare_value(value)
+        flags = 0
+        if self.compress and (len(value) > self.compression_threshold):
+            value = zlib.compress(value)
+            flags |= Connection.FLAGS_COMPRESSED
+        value = self.protocol.prepare_value(value, flags)
         
         # Send SET command
         cmd = self.protocol.set_command(key, value, ttl, flags)
@@ -98,7 +116,11 @@ class Connection:
                 # Read response chunk
                 binary_content = yield self._recv(bodylen)
                 # Parse chunk into a meaningful value
-                content = self.protocol.parse_response(bodylen, binary_content)
+                flags, content = self.protocol.parse_response(bodylen, binary_content)
+                # Decompress it, if needed
+                if flags & Connection.FLAGS_COMPRESSED:
+                    content = zlib.decompress(content)
+
                 raise Return(content)
         else:
             raise MemCacheInvalidResponseException()

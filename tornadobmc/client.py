@@ -6,13 +6,33 @@ from errors import *
 
 class Client:
 
-    def __init__(self, server_list, compress=True, compression_threshold=128, timeout=0.01):
+    def __init__(self, server_list, compress=True, compression_threshold=128, timeout=0.01, server_ttl=3600):
         '''
         Initialize a MemCache client for the given servers.
+        
+        @param server_list Array of servers to connect to
+        @param compress Should data be compressed, if it exceeds the compression threshold?
+        @param compression_threshold Minimum number of bytes that trigger data compression
+        @param timeout Timeout (in seconds) to wait for MemCache response
+        @param server_ttl Time To Live for each server. After this time, it's connection will be closed and reopened when necessary
         '''
-        self.connections = [Connection(server, timeout, compress, compression_threshold) for server in (server_list if isinstance(server_list, list) else [server_list])]
+        self.connections = [Connection(server, timeout, compress, compression_threshold, server_ttl) for server in (server_list if isinstance(server_list, list) else [server_list])]
         self.hash_function = Client._calc_hash_index
 
+    def disconnect(self):
+        '''
+        Disconnect all open MemCache connections
+        '''
+        for connection in self.connections:
+            connection.disconnect()
+
+    def set_server_ttl(self, server_ttl):
+        '''
+        Permit modifying the server connection ttl value
+        '''
+        for connection in self.connections:
+            connection.server_ttl = server_ttl
+    
     def set_timeout(self, new_timeout):
         '''
         Permit modifying the initial timeout value
