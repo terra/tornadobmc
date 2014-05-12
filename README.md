@@ -19,7 +19,7 @@ This library was **not** extensively tested, so it might still contain some bugs
 ### TODOs
 
 * Probably better error handing
-* Auto-close long-idle unused connections
+* ~~Auto-close long-idle unused connections~~
 
 ### Requirements
 
