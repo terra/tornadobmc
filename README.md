@@ -15,6 +15,7 @@ This library was **not** extensively tested, so it might still contain some bugs
 * Binary protocol
 * Supports compression using zlib
 * Connection pool with hashed key distribution between servers. The hash function may be user-defined, if needed
+* CAS get/set support
 
 ### TODOs
 
