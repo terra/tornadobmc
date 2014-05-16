@@ -54,34 +54,38 @@ class Client:
         self.hash_function = function
 
     @coroutine
-    def get(self, key):
+    def get(self, key, cas=False):
         '''
         Retrieve a key from MemCache
+        Returns a tuple with either 2 or 3 values, depending on the value of cas:
+        (Value, Server Index) if no CAS requested or (Value, Server Index, CAS value) otherwise
         '''
         if key is None:
-            raise Return((None, None))
-            
+            raise Return((None, None, None) if cas else (None, None))
+
         server_index = self.hash_function(key, len(self.connections))
         
         # Get result from MemCache
-        value = yield self.connections[server_index].get(key)
+        resp = yield self.connections[server_index].get(key, cas)
+        value, cas = resp if cas else (resp, False)
         
         # Return the value and the index of the server used for reading
-        raise Return((value, server_index))
+        raise Return((value, server_index, cas) if cas else (value, server_index))
         
     @coroutine
-    def set(self, key, value, ttl=0):
+    def set(self, key, value, ttl=0, cas=False):
         '''
         Set a key into one of the MemCache servers
+        Returns a tuple indicating success and server used - (Success, Server Index)
         '''
         if key is None or value is None:
             raise Return((False, None))
 
         server_index = self.hash_function(key, len(self.connections))
-        yield self.connections[server_index].set(key, value, ttl)
+        success = yield self.connections[server_index].set(key, value, ttl, cas)
         
-        # Return which server was used
-        raise Return(server_index)
+        # Return success and which server was used
+        raise Return((success, server_index))
 
     @staticmethod
     def _calc_hash_index(key, server_count):

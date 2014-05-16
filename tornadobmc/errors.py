@@ -5,7 +5,7 @@ class MemCacheExceptionBase(Exception):
 
 class MemCacheUnknownException(MemCacheExceptionBase):
 
-    def __init__(self, code, message):
+    def __init__(self, code, message = ''):
         '''
         Initialize an Unknown error exception
         '''
@@ -32,14 +32,31 @@ class MemCacheKeyNotFoundException(MemCacheExceptionBase, KeyError):
 
     STATUS_CODE = 0x01
     
-    def __init__(self, key, server):
+    def __init__(self, key, server, bodylen=None):
         '''
         Initialize a Key not found exception
         '''
         self.key = key
         self.server = server
+        self.bodylen = bodylen
         self.message = 'Key [{0}] not found in MemCache server [{1}]'.format(key, server)
         super(MemCacheKeyNotFoundException, self).__init__(self.message)
+
+class MemCacheCASException(MemCacheExceptionBase, KeyError):
+
+    STATUS_CODE = 0x02
+    
+    def __init__(self, key, server, bodylen=None):
+        '''
+        Initialize a CAS set exception.
+        This is actually a Key already exists exception, but in the CAS command context it means
+        that the operation could not complete due to CAS unique value mismatch.
+        '''
+        self.key = key
+        self.server = server
+        self.bodylen = bodylen
+        self.message = 'Unable to store value for [{0}] in MemCache server [{1}]. CAS mismatch.'.format(key, server)
+        super(MemCacheCASException, self).__init__(self.message)
 
 class MemCacheServerDisconnectionException(MemCacheExceptionBase):
 

@@ -71,7 +71,7 @@ class Connection:
             self.connection_time = None
 
     @coroutine
-    def get(self, key):
+    def get(self, key, cas=False):
         '''
         Get a value from MemCache
         '''
@@ -80,11 +80,25 @@ class Connection:
         yield self._send(cmd)
         
         # Get response
-        res = yield self._get_response(key)
-        raise Return(res)
+        try:
+            res = yield self._get_response(key)
+            content, temp = (None, None) if res is None else res
+            
+            if cas:
+                # Return both the content and it's unique CAS value
+                raise Return(res)
+            else:
+                # Return only the content
+                raise Return(content)
+        except MemCacheKeyNotFoundException as e:
+            if e.bodylen:
+                # Clean read buffer
+                yield self._recv(e.bodylen)
+            # Re-raise the exception
+            raise e
 
     @coroutine
-    def set(self, key, value, ttl=0):
+    def set(self, key, value, ttl=0, cas=False):
         '''
         Set a value into MemCache
         '''
@@ -94,13 +108,23 @@ class Connection:
             value = zlib.compress(value)
             flags |= Connection.FLAGS_COMPRESSED
         value = self.protocol.prepare_value(value, flags)
-        
+
         # Send SET command
-        cmd = self.protocol.set_command(key, value, ttl, flags)
+        cmd = self.protocol.set_command(key, value, ttl, flags, cas or 0)
         yield self._send(cmd)
     
         # Get response
-        yield self._get_response(key)
+        try:
+            res = yield self._get_response(key)
+        except MemCacheCASException as e:
+            if e.bodylen:
+                # Clean read buffer
+                yield self._recv(e.bodylen)
+            
+            raise Return(False)
+        
+        # SET successful
+        raise Return(True)
 
     @coroutine
     def _get_response(self, key):
@@ -111,7 +135,7 @@ class Connection:
         header = yield self._recv(MemCacheBinaryProtocol.HEADER_SIZE)
         if header is not None:
             # Get number of bytes to read for response chunk
-            bodylen = self.protocol.parse_response_header(header, key, str(self.address))
+            bodylen, cas = self.protocol.parse_response_header(header, key, str(self.address))
             if bodylen:
                 # Read response chunk
                 binary_content = yield self._recv(bodylen)
@@ -121,7 +145,7 @@ class Connection:
                 if flags & Connection.FLAGS_COMPRESSED:
                     content = zlib.decompress(content)
 
-                raise Return(content)
+                raise Return((content, cas))
         else:
             raise MemCacheInvalidResponseException()
         
